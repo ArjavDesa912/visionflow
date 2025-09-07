@@ -1,0 +1,52 @@
+models:
+  device: auto
+  object_detection:
+    model: yolov8x
+    confidence_threshold: 0.5
+    nms_threshold: 0.4
+  classification:
+    model: efficientnet-b7
+    num_classes: 1000
+  deepfake_detection:
+    model: vit-base
+    confidence_threshold: 0.8
+
+video:
+  frame_rate: 30
+  resolution: [1920, 1080]
+  batch_size: 8
+  temporal_consistency: true
+  style_transfer:
+    enabled: true
+    strength: 0.8
+  frame_interpolation:
+    enabled: true
+    method: optical_flow
+
+search:
+  embedding_dim: 512
+  index_type: hnsw
+  ef_construction: 100
+  ef_search: 50
+  max_connections: 32
+  max_elements: 1000000
+  use_gpu: false
+
+paths:
+  models_dir: ./models
+  data_dir: ./data
+  cache_dir: ./cache
+  output_dir: ./output
+  logs_dir: ./logs
+
+performance:
+  batch_size: 8
+  num_workers: 4
+  pin_memory: true
+  mixed_precision: true
+  gradient_accumulation: 1
+
+logging:
+  level: INFO
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  file: ./logs/visionflow.log

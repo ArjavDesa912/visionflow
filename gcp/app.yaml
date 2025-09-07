@@ -1,0 +1,53 @@
+runtime: python39
+instance_class: F2
+service: default
+
+# Environment variables
+env_variables:
+  PROJECT_ID: "visionflow-pro"
+  REGION: "us-central1"
+  DATABASE_URL: "postgresql://user:password@/visionflow"
+  STORAGE_BUCKET: "visionflow-storage"
+  MODELS_BUCKET: "visionflow-models"
+  API_VERSION: "v1"
+
+# Automatic scaling
+automatic_scaling:
+  min_num_instances: 1
+  max_num_instances: 10
+  cpu_utilization:
+    target_utilization: 0.65
+
+# Network configuration
+network:
+  name: default
+
+# Health check
+readiness_check:
+  path: "/health"
+  check_interval_sec: 5
+  timeout_sec: 4
+  failure_threshold: 2
+  success_threshold: 2
+
+# Liveness check
+liveness_check:
+  path: "/health"
+  check_interval_sec: 30
+  timeout_sec: 4
+  failure_threshold: 2
+  success_threshold: 2
+
+# Inbound services
+inbound_services:
+  - warmup
+
+# Resources
+resources:
+  cpu: 2
+  memory_gb: 4
+  disk_size_gb: 10
+
+# Build configuration
+build_env_variables:
+  GOOGLE_BUILDABLE: "Dockerfile"

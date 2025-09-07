@@ -1,0 +1,198 @@
+version: '3.8'
+
+services:
+  # VisionFlow Pro API
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: visionflow-api
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://visionflow:visionflow@db:5432/visionflow
+      - STORAGE_BUCKET=visionflow-storage
+      - MODELS_BUCKET=visionflow-models
+      - REDIS_URL=redis://redis:6379
+      - API_HOST=0.0.0.0
+      - API_PORT=8080
+    volumes:
+      - ./api:/app
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # VisionFlow Pro Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: visionflow-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api:8080
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # PostgreSQL Database
+  db:
+    image: postgres:13
+    container_name: visionflow-db
+    environment:
+      - POSTGRES_DB=visionflow
+      - POSTGRES_USER=visionflow
+      - POSTGRES_PASSWORD=visionflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: visionflow-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: visionflow-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployment/nginx.conf:/etc/nginx/nginx.conf
+      - ./deployment/ssl:/etc/nginx/ssl
+    depends_on:
+      - api
+      - frontend
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Celery Worker (for background tasks)
+  celery-worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: visionflow-celery-worker
+    command: celery -A main.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://visionflow:visionflow@db:5432/visionflow
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./api:/app
+      - ./models:/app/models
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Celery Beat (for scheduled tasks)
+  celery-beat:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: visionflow-celery-beat
+    command: celery -A main.celery beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://visionflow:visionflow@db:5432/visionflow
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./api:/app
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Flower (Celery monitoring)
+  flower:
+    image: mher/flower:0.9.7
+    container_name: visionflow-flower
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379
+      - FLOWER_PORT=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Prometheus (Monitoring)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: visionflow-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployment/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+  # Grafana (Visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: visionflow-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deployment/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - visionflow-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  visionflow-network:
+    driver: bridge
