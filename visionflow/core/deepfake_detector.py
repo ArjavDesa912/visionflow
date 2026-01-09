@@ -1,4 +1,5 @@
 import torch
+import os
 import torch.nn as nn
 import torchvision.transforms as transforms
 from PIL import Image
@@ -21,8 +22,23 @@ class DeepfakeDetector:
         self.model = self._load_model()
         self.transform = self._get_transforms()
         
-        # For demonstration, using synthetic training data
-        self.is_trained = False
+        
+        # Check for pre-trained model
+        self.models_dir = config.get('paths.models_dir', './models')
+        self.model_path = os.path.join(self.models_dir, 'deepfake_detector.pth')
+        
+        if os.path.exists(self.model_path):
+            try:
+                self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+                self.is_trained = True
+                print(f"Loaded deepfake detection model from {self.model_path}")
+            except Exception as e:
+                print(f"Error loading model from {self.model_path}: {e}")
+                self.is_trained = False
+        else:
+            # For demonstration, using synthetic training data
+            self.is_trained = False
+            print(f"No custom model found at {self.model_path}, using generic ImageNet weights")
     
     def _load_model(self):
         """Load Vision Transformer model for deepfake detection"""
@@ -250,9 +266,25 @@ class DeepfakeDetector:
             loss.backward()
             optimizer.step()
             
+            
             self.model.eval()
             self.is_trained = True
             
             return loss.item()
         
         return 0.0
+
+    def save_model(self, path: str = None):
+        """
+        Save the trained model
+        
+        Args:
+            path: Path to save the model. If None, uses the default path.
+        """
+        save_path = path or self.model_path
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        torch.save(self.model.state_dict(), save_path)
+        print(f"Model saved to {save_path}")
